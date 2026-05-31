@@ -12,13 +12,22 @@ class MyEncoder(JSONEncoder):
     def default(self, o):
         if type(o) is MessageType:
             return o.value
-        data = o.__dict__
+        data = dict(o.__dict__)  # copy – do NOT mutate the original object
         if "invocation_id" in data:
             data["invocationId"] = data["invocation_id"]
             del data["invocation_id"]
         if "stream_ids" in data:
             data["streamIds"] = data["stream_ids"]
             del data["stream_ids"]
+        # Omit null result/error fields.
+        # The SignalR protocol forbids including both keys simultaneously,
+        # and .NET treats the mere presence of the "error" key (even as null)
+        # as the error field being set, which causes a protocol violation and
+        # connection termination when a "result" is also present.
+        if "result" in data and data["result"] is None:
+            del data["result"]
+        if "error" in data and data["error"] is None:
+            del data["error"]
         return data
 
 
