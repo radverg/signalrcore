@@ -99,6 +99,7 @@ class BaseHubConnection(object):
         self.logger = Helpers.get_logger()
         self.handlers = defaultdict(list)
         self.stream_handlers = defaultdict(list)
+        self.result_handlers = {}
         self.skip_negotiation = skip_negotiation
         self._callbacks = HubCallbacks()
 
@@ -226,6 +227,28 @@ class BaseHubConnection(object):
         self.logger.debug("Handler registered started {0}".format(event))
         self.handlers[event].append(callback_function)
 
+    def on_with_result(self, event: str, callback: Callable) -> None:
+        """Register a callback for server-to-client invocations that expect
+        a result back (client results, introduced in SignalR .NET 7).
+        The server calls InvokeAsync on the client and waits for the return value.
+
+        The callback receives the arguments list and must return the result value.
+        If the callback raises an exception, the error message is sent back
+        to the server.
+
+        Only one result handler per event is supported (the last registration wins).
+
+        connection.on_with_result("GetMessage", lambda args: "Hello!")
+
+        Args:
+            event (string): Event name
+            callback (Callable): callback function that accepts the arguments list
+                and returns a result value
+        """
+        self.logger.debug(
+            "Result handler registered for {0}".format(event))
+        self.result_handlers[event] = callback
+
     def unsubscribe(self, event, callback_function: Callable) -> None:
         """Removes a callback from the specified event
         Args:
@@ -321,6 +344,47 @@ class BaseHubConnection(object):
 
     def __on_invocation_message(self, message: InvocationMessage) -> None:  # 1
         message: InvocationMessage
+
+        # Server-to-client invocation expecting a result (client results, .NET 7+)
+        if message.invocation_id is not None:
+            result_handler = self.result_handlers.get(message.target, None)
+            if result_handler is not None:
+                try:
+                    result = result_handler(message.arguments)
+                    completion = CompletionMessage(
+                        message.invocation_id,
+                        result,
+                        None,
+                        headers={})
+                except Exception as e:
+                    self.logger.exception(
+                        "Result handler for '{0}' raised an exception"
+                        .format(message.target))
+                    completion = CompletionMessage(
+                        message.invocation_id,
+                        None,
+                        str(e),
+                        headers={})
+                self.transport.send(completion)
+                return
+
+            # No result handler registered – fire regular handlers and send
+            # a null completion so the server is not left waiting indefinitely.
+            fired_handlers = self.handlers.get(message.target, [])
+            if len(fired_handlers) == 0:
+                self.logger.warning(
+                    f"Server requested a result for '{message.target}' "
+                    f"but no result handler is registered")
+            for handler in fired_handlers:
+                handler(message.arguments)
+            self.transport.send(
+                CompletionMessage(
+                    message.invocation_id,
+                    None,
+                    None,
+                    headers={}))
+            return
+
         fired_handlers = self.handlers.get(message.target, [])
 
         if len(fired_handlers) == 0:

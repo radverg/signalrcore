@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import time
 from typing import Awaitable, Any, List, Callable, Optional
 from ...hub.base_hub_connection import BaseHubConnection
@@ -9,6 +10,7 @@ from ...messages.completion_message import CompletionMessage
 class AIOBaseHubConnection(BaseHubConnection):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._loop = None  # captured in start()
 
     async def wait_until_state(
             self,
@@ -30,6 +32,7 @@ class AIOBaseHubConnection(BaseHubConnection):
             bool: True if connection stars successfully, False
             if connection cant start or is already connected
         """
+        self._loop = asyncio.get_event_loop()
         t1 = asyncio.to_thread(super().start)
         t2 = self.wait_until_state(TransportState.connected)
 
@@ -121,3 +124,39 @@ class AIOBaseHubConnection(BaseHubConnection):
                 arguments will be bound
         """
         return super().on(event, callback_function)
+
+    def on_with_result(self, event: str, callback: Callable) -> None:
+        """Register a callback for server-to-client invocations that expect
+        a result back (client results, introduced in SignalR .NET 7).
+
+        The callback may be either a regular function or an async coroutine.
+        It receives the arguments list and must return (or resolve with) the
+        result value.  Exceptions are forwarded to the server as error strings.
+
+        connection.on_with_result("GetMessage", lambda args: "Hello!")
+
+        async def get_message(args):
+            await asyncio.sleep(0)
+            return "Hello async!"
+        connection.on_with_result("GetMessage", get_message)
+
+        Args:
+            event (string): Event name
+            callback (Callable): sync or async callback that accepts the
+                arguments list and returns a result value
+        """
+        if inspect.iscoroutinefunction(callback):
+            loop = self._loop
+
+            def sync_wrapper(arguments):
+                if loop is None or not loop.is_running():
+                    # Fallback: run a new event loop (e.g. before start())
+                    return asyncio.run(callback(arguments))
+                future = asyncio.run_coroutine_threadsafe(
+                    callback(arguments), loop)
+                return future.result()
+
+            super().on_with_result(event, sync_wrapper)
+        else:
+            super().on_with_result(event, callback)
+
