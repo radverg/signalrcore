@@ -58,7 +58,7 @@ Use a `Subject` to stream data from the client to the server:
 ```python
 from signalrcore.subject import Subject
 
-subject = Subject()
+subject = Subject(arguments=["example-metadata"])
 
 # Start the streaming invocation
 hub_connection.send("UploadStream", subject)
@@ -76,7 +76,7 @@ subject.complete()
 from signalrcore.subject import Subject
 import time
 
-subject = Subject()
+subject = Subject(arguments=["example-metadata"])
 hub_connection.send("UploadStream", subject)
 
 for i in range(10):

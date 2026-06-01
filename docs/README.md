@@ -349,7 +349,7 @@ hub_connection.stream(
 ```python
 from signalrcore.subject import  Subject
 
-subject = Subject()
+subject = Subject(arguments=["example-metadata"])
 
 # Start Streaming
 hub_connection.send("UploadStream", subject)
