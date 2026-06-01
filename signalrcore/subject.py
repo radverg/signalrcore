@@ -20,6 +20,7 @@ class Subject(object):
     def __init__(self):
         self.connection = None
         self.target = None
+        self.start_arguments = []
         self.invocation_id = str(uuid.uuid4())
         self.lock = threading.Lock()
         self._timeout = 10
@@ -61,7 +62,7 @@ class Subject(object):
                 InvocationClientStreamMessage(
                     [self.invocation_id],
                     self.target,
-                    []))
+                    self.start_arguments))
         self.lock.release()
 
     def complete(self):
