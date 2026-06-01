@@ -101,6 +101,17 @@ class MessagePackHubProtocol(BaseHubProtocol):
         return varint_length + encoded_message
 
     def _encode_message(self, message):
+        # CompletionMessage requires a result_kind discriminator:
+        # [3, Headers, InvocationId, ResultKind, Result]
+        # ResultKind: 1 = error, 2 = void, 3 = result
+        if isinstance(message, CompletionMessage):
+            if message.error is not None:
+                return [3, message.headers, message.invocation_id, 1, message.error]
+            elif message.result is not None:
+                return [3, message.headers, message.invocation_id, 3, message.result]
+            else:
+                return [3, message.headers, message.invocation_id, 2]
+
         result = []
 
         # sort attributes
