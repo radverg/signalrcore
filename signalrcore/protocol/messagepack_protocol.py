@@ -6,7 +6,7 @@ from ..messages.handshake.response import HandshakeResponseMessage
 from ..messages.invocation_message\
     import InvocationMessage, InvocationClientStreamMessage  # 1
 from ..messages.stream_item_message import StreamItemMessage  # 2
-from ..messages.completion_message import CompletionMessage  # 3
+from ..messages.completion_message import CompletionMessage, CompletionClientStreamMessage  # 3
 from ..messages.stream_invocation_message import StreamInvocationMessage  # 4
 from ..messages.cancel_invocation_message import CancelInvocationMessage  # 5
 from ..messages.ping_message import PingMessage  # 6
@@ -111,6 +111,25 @@ class MessagePackHubProtocol(BaseHubProtocol):
                 return [3, message.headers, message.invocation_id, 3, message.result]
             else:
                 return [3, message.headers, message.invocation_id, 2]
+
+        # CompletionClientStreamMessage signals end of a client-side stream.
+        # Format: [3, Headers, InvocationId, ResultKind=void(2)]
+        if isinstance(message, CompletionClientStreamMessage):
+            return [3, message.headers, message.invocation_id, 2]
+
+        # InvocationClientStreamMessage starts a client-side stream upload.
+        # Format: [1, Headers, InvocationId=null, Target, Arguments, StreamIds]
+        # InvocationId is null because the stream is identified by StreamIds.
+        if isinstance(message, InvocationClientStreamMessage):
+            return [
+                1,
+                message.headers,
+                None,
+                message.target,
+                message.arguments,
+                message.stream_ids,
+            ]
+
 
         result = []
 
